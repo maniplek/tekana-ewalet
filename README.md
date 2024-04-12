@@ -65,7 +65,7 @@ Synchronous communication methods like HTTP are efficient for smaller setups but
 
 In an asynchronous communication model, each request (or message) is handled by multiple services independently. For instance, Kafka is well-suited to this approach. Messages remain in Kafka even after being consumed, enabling various services to process them simultaneously. This method complements the Tekana-eWallet system because a single request can trigger multiple responses, such as logging transactions, updating account balances, or sending email confirmations. A visual example is shown below.
 
-![alt text](./assets/design-preview.png)
+![alt text](./assets/design.png)
 
 While synchronous communication offers a straightforward design, it restricts service autonomy. Asynchronous communication prioritizes scalability and failure resilience, making it more suitable for large-scale systems.
 
