@@ -1,0 +1,130 @@
+version: "3"
+services:
+  redis:
+    image: redis:alpine
+    restart: always
+    ports:
+      - '6379:6379'
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    restart: always
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - 22181:2181
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    restart: always
+    depends_on:
+      - zookeeper
+    ports:
+      - 29092:29092
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+  db:
+    image:  postgres:13.1-alpine
+    restart: always
+    env_file:
+      - .env
+    # volume below can be used to create an entry point script to create dbs and users
+    # volumes:
+    # - ./create-dev-db.sh:/docker-entrypoint-initdb.d/create-dev-db.sh
+    ports:
+      - "5434:5432"
+    environment:
+      # un comment the line below if you need to use a db without a password. preferably in local development
+      POSTGRES_HOST_AUTH_METHOD: trust
+      # POSTGRES_MULTIPLE_DATABASES: ${POSTGRES_MULTIPLE_DATABASES}
+      DB_PORT: ${DB_PORT}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      DB_HOST: db # must be same as the name of the db service if no other networks are configured
+  api:
+    build: 
+      context: ./api
+      dockerfile: Dockerfile
+    depends_on:
+      - db
+      - redis
+      - kafka
+    ports:
+      - "3000:3000"
+    x-develop:
+      watch:
+        - action: sync
+          path: ./api
+          target: /app
+          ignore: 
+            - ./api/node_modules
+        - action: rebuild 
+          path: ./api/package.json
+    volumes:
+       - ./api/src:/usr/src/app/src
+  customer:
+    build: 
+      context: ./customer
+      dockerfile: Dockerfile
+    depends_on:
+      - db
+      - kafka
+    ports:
+      - "5000:5000"
+    x-develop:
+      watch:
+        - action: sync
+          path: ./customer
+          target: /app
+          ignore: 
+            - ./customer/node_modules
+        - action: rebuild 
+          path: ./customer/package.json
+    volumes:
+       - ./customer/src:/usr/src/app/src
+  wallet:
+    build: 
+      context: ./wallet
+      dockerfile: Dockerfile
+    depends_on:
+      - db
+      - kafka
+    ports:
+      - "4000:4000"
+    x-develop:
+      watch:
+        - action: sync
+          path: ./wallet
+          target: /app
+          ignore: 
+            - ./wallet/node_modules
+        - action: rebuild 
+          path: ./api/package.json
+    volumes:
+       - ./wallet/src:/usr/src/app/src
+  kafdrop:
+    image: obsidiandynamics/kafdrop:latest
+    depends_on:
+      - kafka
+      - schemaregistry
+    ports:
+      - 19000:9000
+    environment:
+      KAFKA_BROKERCONNECT: kafka:9092
+      CMD_ARGS: "--message.format=AVRO --message.keyFormat=DEFAULT --schemaregistry.connect=http://schemaregistry:8085"
+  schemaregistry:
+    image: confluentinc/cp-schema-registry:latest
+    restart: always
+    depends_on:
+      - zookeeper
+    environment:
+      SCHEMA_REGISTRY_KAFKASTORE_CONNECTION_URL: "zookeeper:2181"
+      SCHEMA_REGISTRY_HOST_NAME: schemaregistry
+      SCHEMA_REGISTRY_LISTENERS: "http://0.0.0.0:8085"
+    ports:
+      - 18085:8085
